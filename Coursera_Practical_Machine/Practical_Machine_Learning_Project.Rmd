@@ -1,0 +1,152 @@
+---
+title: "Coursera_Practical_Machine_Learning_Project"
+author: "Zachary Conway"
+date: "3/31/2021"
+output: html_document
+---
+
+
+## Practical Machine Learning - Final Project: Prediction Assignment Writeup
+
+# 1. Overview
+
+This document is the show the final report for the Practical Machine Learning Coursera class. Using RStudio, this document shows the implementation of specific libraries, functions such as knitr, and is published in an HTML format. This document's analysis will be used later for the course quiz and a prediction assignment writeup. The overall goal of this project is to be able to predict the manner in which 6 participants performed exercises shown below. This is considered to be the 'classe' variable within the training set. 
+
+# 2. Background
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset). 
+
+# 3. Data Loading and Exploratory Analysis
+
+## Data overview
+
+The training data for this project are available here: 
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+The data for this project come from this source: http://groupware.les.inf.puc-rio.br/har. If you use the document you create for this class for any purpose please cite them as they have been very generous in allowing their data to be used for this kind of assignment. 
+
+## Loading in Necessary Libraries
+
+```{r}
+library(knitr)
+library(caret)
+library(rpart)
+library(rpart.plot)
+library()
+library(randomForest)
+library(corrplot)
+```
+
+## Assigning the Information
+
+```{r}
+trainData <- read.csv("pml-training.csv")
+testData <- read.csv("pml-testing.csv")
+```
+```{r}
+dim(trainData)
+dim(testData)
+```
+
+The training data set contains 19622 observations within the data set as well as 160 variables
+The testing data contains 20 observations and 160 variables.
+The 'classe' variable in the training set is the outcome to predict as mentioned previously
+
+## Cleaning Up the Data
+
+### In this step, we'll be cleaning the data and getting rid of observations with missing values
+
+```{r}
+sum(complete.cases(trainData))
+```
+
+### First, we'll remove columns that contain null values (NA)
+
+```{r}
+trainData <- trainData[, colSums(is.na(trainData)) == 0]
+testData <- testData[, colSums(is.na(testData)) == 0]
+```
+
+### Then we'll get rid of columns that don't mean much to the measurements we'll see later
+
+```{r}
+classe <- trainData$classe
+trainRemove <- grepl("^X|timestamp|window", names(trainData))
+trainData <- trainData[, !trainRemove]
+trainCleaned <- trainData[, sapply(trainData, is.numeric)]
+trainCleaned$classe <- classe
+testRemove <- grepl("^X|timestamp|window", names(testData))
+testData <- testData[, !testRemove]
+testCleaned <- testData[, sapply(testData, is.numeric)]
+```
+
+Now with the cleaned data, the training data set contains 19622 observations and only 53 variables
+The test data set also contains 20 observations and 53 variables. 
+The 'classe' variable is still in the cleaned training set.
+
+### Splitting the data
+
+Afterwards, we'll split the cleaned datasets in 2 seperate sets: a pure training data set and a validation training set
+The validation set will be used to conduct cross validation later on.
+
+```{r}
+set.seed(22519)
+inTrain <- caret::createDataPartition(trainCleaned$classe, p=0.70, list=F)
+trainData <- trainCleaned[inTrain, ]
+testData <- trainCleaned[-inTrain, ]
+```
+
+### Data Modeling
+
+We fit a predictive model for activity recognition using the Random Forest algorithm.
+It automatically selects important variables and is robust to correlated covariates and outliers.
+
+```{r}
+controlRf <- caret::trainControl(method="cv", 5)
+modelRf <- caret::train(classe ~ ., data=trainData, method="rf", trControl=controlRf, ntree=250)
+modelRf
+```
+
+We'll then estimate the performance of the model on the validation data set
+```{r}
+predictRf <- predict(modelRf, testData)
+confusionMatrix(as.factor(testData$classe), predictRf)
+```
+
+```{r}
+accuracy <- postResample(predictRf, as.factor(testData$classe))
+accuracy
+oose <- 1 - as.numeric(confusionMatrix(as.factor(testData$classe), predictRf)$overall[1])
+oose
+```
+
+So the estimated accuracy of the model is 99.42% and the estimated out-of-sample error is 0.58%
+
+### Predicting for Test Data Set
+
+No we'll apply the model to the original testing data set downloaded from the data source
+```{r}
+result <- predict(modelRf, testCleaned[, -length(names(testCleaned))])
+result
+```
+
+### Appendix: Figures 
+
+Correlation Matrix Visualization
+```{r}
+corrPlot <- cor(trainData[, -length(names(trainData))])
+corrplot::corrplot(corrPlot, method="color")
+```
+
+Decision Tree Visualization
+```{r}
+treeModel <- rpart::rpart(classe ~ ., data=trainData, method="class")
+rpart.plot::prp(treeModel)
+```
+
+
